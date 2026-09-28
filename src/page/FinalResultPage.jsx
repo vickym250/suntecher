@@ -12,7 +12,6 @@ const examTypes = ["Quarterly", "Half-Yearly", "Annual"];
 const sessionsList = ["2024-25", "2025-26", "2026-27", "2027-28"];
 
 // 👇 FIXED CLASS LIST: Nursery, LKG, UKG, Class 1 se Class 8 tak
-// (Desktop FinalResultPage.jsx jaisa hi)
 const FIXED_CLASSES = [
   "Nursery", "LKG", "UKG",
   "Class 1", "Class 2", "Class 3", "Class 4",
@@ -31,7 +30,7 @@ export default function MobileFinalResult() {
   const [classesList, setClassesList] = useState([]);
 
   // Shape: { className: { Annual: [subjects], "Half-Yearly": [subjects], Quarterly: [subjects] } }
-  // Timetables/{className} doc se aata hai — AdmitCardGenerator / FinalResultPage wali hi source
+  // Timetables/{className} doc se aata hai
   const [dynamicSubjectMaster, setDynamicSubjectMaster] = useState({});
 
   const [allStudents, setAllStudents] = useState([]); 
