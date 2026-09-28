@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { 
-  collection, doc, onSnapshot, query, updateDoc 
+  collection, doc, onSnapshot, query, updateDoc, writeBatch
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { toast, Toaster } from "react-hot-toast";
@@ -135,6 +135,82 @@ export default function AttendanceWeb() {
     toast.success(`${Object.keys(updates).length} students Present mark ho gaye`);
   };
 
+  // ===== NEW: Pure month ka sabko ek saath Present (direct save) =====
+  const markMonthPresent = async () => {
+    if (filteredData.length === 0) return toast.error("Is class me koi student nahi hai.");
+
+    const monthIdx = months.indexOf(selectedMonth);
+    const totalDays = new Date(today.getFullYear(), monthIdx + 1, 0).getDate();
+
+    // Sirf working days: Sunday, Holiday aur future date skip
+    const eligibleDays = [];
+    for (let d = 1; d <= totalDays; d++) {
+      const dObj = new Date(today.getFullYear(), monthIdx, d);
+      if (dObj.getDay() === 0) continue;
+      if (holidays[`day_${d}`]) continue;
+      if (dObj > today) continue;
+      eligibleDays.push(d);
+    }
+    if (eligibleDays.length === 0) return toast.error("Koi valid working day nahi mila.");
+
+    const ok = window.confirm(
+      `${selectedClass} ke SAARE students ko ${selectedMonth} ke ${eligibleDays.length} working days ke liye Present mark karein?\n\n(Jo pehle se saved hain wo change nahi honge)`
+    );
+    if (!ok) return;
+
+    setSaving(true);
+    try {
+      let batch = writeBatch(db);
+      let ops = 0;
+      let changed = 0;
+
+      for (const s of filteredData) {
+        const monthData = s.attendance?.[selectedMonth] || {};
+        const updates = {};
+        let added = 0;
+
+        eligibleDays.forEach((d) => {
+          const key = `${selectedMonth}_day_${d}`;
+          if (!monthData[key]) {
+            updates[`attendance.${selectedMonth}.${key}`] = "P";
+            added++;
+          }
+        });
+        if (added === 0) continue;
+
+        // P / A count din-wise data se dobara nikaalo
+        let present = 0;
+        let absent = 0;
+        for (let d = 1; d <= totalDays; d++) {
+          const key = `${selectedMonth}_day_${d}`;
+          const st = updates[`attendance.${selectedMonth}.${key}`] || monthData[key];
+          if (st === "P") present++;
+          else if (st === "A") absent++;
+        }
+        updates[`attendance.${selectedMonth}.present`] = present;
+        updates[`attendance.${selectedMonth}.absent`] = absent;
+
+        batch.update(doc(db, "students", s.id), updates);
+        ops++;
+        changed++;
+        if (ops === 400) {
+          await batch.commit();
+          batch = writeBatch(db);
+          ops = 0;
+        }
+      }
+      if (ops > 0) await batch.commit();
+
+      setTempAttendance({});
+      if (changed === 0) toast("Sabka attendance pehle se saved hai.");
+      else toast.success(`${changed} students ka pura month Present ho gaya! 🎉`);
+    } catch (error) {
+      console.error(error);
+      toast.error("Kucch gadbad ho gayi!");
+    }
+    setSaving(false);
+  };
+
   const saveAttendance = async () => {
     setSaving(true);
     try {
@@ -232,13 +308,23 @@ export default function AttendanceWeb() {
         ) : null}
 
         {/* ===== NEW: MARK ALL PRESENT BUTTON ===== */}
-        {!isFutureDate && !isRestDay && filteredData.length > 0 && (
-          <div className="flex justify-end mb-4">
+        {/* ===== MARK ALL PRESENT BUTTONS ===== */}
+        {filteredData.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-3 mb-4">
+            {!isFutureDate && !isRestDay && (
+              <button
+                onClick={markAllPresent}
+                className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95"
+              >
+                ✓ Mark All Present (Aaj)
+              </button>
+            )}
             <button
-              onClick={markAllPresent}
-              className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95"
+              onClick={markMonthPresent}
+              disabled={saving}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50"
             >
-              ✓ Mark All Present
+              {saving ? "Saving..." : `✓ Poora ${selectedMonth} Sab P`}
             </button>
           </div>
         )}
