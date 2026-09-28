@@ -4,15 +4,15 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { toast, Toaster } from "react-hot-toast";
-import { Calendar, ShieldAlert, ArrowLeft } from "lucide-react"; // ArrowLeft icon add kiya
-import { useNavigate } from "react-router-dom"; // Navigation ke liye
+import { Calendar, ShieldAlert, ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 /* ================= CONSTANTS ================= */
 const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const classes = ["LKG", "UKG", "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6", "Class 7", "Class 8", "Class 9", "Class 10", "Class 11", "Class 12"];
 
 export default function AttendanceWeb() {
-  const navigate = useNavigate(); // Hook initialize kiya
+  const navigate = useNavigate();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -69,6 +69,11 @@ export default function AttendanceWeb() {
     return () => { unsub(); unsubH(); };
   }, [currentAppSession, selectedMonth]);
 
+  // Class / month / day badalne par purani unsaved selection hata do
+  useEffect(() => {
+    setTempAttendance({});
+  }, [selectedClass, selectedMonth, day]);
+
   /* ================= ACTIONS ================= */
   const selectAttendance = (studentId, status) => {
     if (isFutureDate) return toast.error("Bhai, aage ki date locked hai!");
@@ -79,6 +84,24 @@ export default function AttendanceWeb() {
       return toast.error("Pehle se saved hai, change nahi hoga.");
     }
     setTempAttendance(prev => ({ ...prev, [studentId]: status }));
+  };
+
+  // ===== NEW: Sabko ek saath Present =====
+  const markAllPresent = () => {
+    if (isFutureDate) return toast.error("Bhai, aage ki date locked hai!");
+    if (isRestDay) return toast.error(`Aaj ${holidayReason} ki chutti hai!`);
+
+    const updates = {};
+    filteredData.forEach((s) => {
+      const alreadySaved = s.attendance?.[selectedMonth]?.[attendanceDayKey];
+      if (!alreadySaved) updates[s.id] = "P"; // sirf unmarked students
+    });
+
+    if (Object.keys(updates).length === 0) {
+      return toast.error("Sabka attendance pehle se saved hai.");
+    }
+    setTempAttendance((prev) => ({ ...prev, ...updates }));
+    toast.success(`${Object.keys(updates).length} students Present mark ho gaye`);
   };
 
   const saveAttendance = async () => {
@@ -176,6 +199,18 @@ export default function AttendanceWeb() {
             <Calendar size={20}/> <span className="font-black uppercase italic text-sm">{holidayReason} (Attendance Locked)</span>
           </div>
         ) : null}
+
+        {/* ===== NEW: MARK ALL PRESENT BUTTON ===== */}
+        {!isFutureDate && !isRestDay && filteredData.length > 0 && (
+          <div className="flex justify-end mb-4">
+            <button
+              onClick={markAllPresent}
+              className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg transition-all active:scale-95"
+            >
+              ✓ Mark All Present
+            </button>
+          </div>
+        )}
 
         {/* STUDENT LIST */}
         {!isFutureDate ? (
