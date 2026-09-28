@@ -21,9 +21,24 @@ const FIXED_CLASSES = [
 // Subject naam match karne ke liye (marksheet jaisa normalize)
 const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 
+// 👇 LocalStorage helpers: session / class / exam yaad rakhne ke liye
+const LS_PREFIX = "mobileFinalResult_";
+const getSaved = (key, fallback, allowed) => {
+  try {
+    const val = localStorage.getItem(LS_PREFIX + key);
+    if (val && (!allowed || allowed.includes(val))) return val;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+};
+const saveToLS = (key, value) => {
+  try { localStorage.setItem(LS_PREFIX + key, value); } catch {}
+};
+
 export default function MobileFinalResult() {
   const navigate = useNavigate();
-  const [session, setSession] = useState("2025-26"); 
+  const [session, setSession] = useState(() => getSaved("session", "2025-26", sessionsList)); 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -37,10 +52,15 @@ export default function MobileFinalResult() {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentSearch, setStudentSearch] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [cls, setCls] = useState(""); 
-  const [exam, setExam] = useState("Annual");
+  const [cls, setCls] = useState(() => getSaved("cls", "", FIXED_CLASSES)); 
+  const [exam, setExam] = useState(() => getSaved("exam", "Annual", examTypes));
   const [rows, setRows] = useState([]);
   const [resultList, setResultList] = useState([]);
+
+  // Jab bhi ye values badlein, localStorage me save
+  useEffect(() => { saveToLS("session", session); }, [session]);
+  useEffect(() => { if (cls) saveToLS("cls", cls); }, [cls]);
+  useEffect(() => { saveToLS("exam", exam); }, [exam]);
   
   // Magic & Max Settings
   const [masterMax, setMasterMax] = useState("100");
