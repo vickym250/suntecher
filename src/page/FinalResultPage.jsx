@@ -21,6 +21,34 @@ const FIXED_CLASSES = [
 // Subject naam match karne ke liye (marksheet jaisa normalize)
 const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 
+// 👇 SUBJECT ORDER: English, Hindi, Math, Science, SST, Computer, Urdu, Sanskrit, GK, Art
+// Har subject ke alag-alag spelling (normalize ke baad) alias me diye hain.
+const SUBJECT_ORDER = [
+  ["english", "eng"],
+  ["hindi"],
+  ["math", "maths", "mathematics"],
+  ["science", "sci"],
+  ["sst", "socialscience", "socialstudies"],
+  ["computer", "computers", "computerscience"],
+  ["urdu"],
+  ["sanskrit"],
+  ["gk", "generalknowledge"],
+  ["art", "arts", "drawing"]
+];
+
+const subjectRank = (name) => {
+  const n = normalize(name);
+  const idx = SUBJECT_ORDER.findIndex((aliases) => aliases.includes(n));
+  return idx === -1 ? 999 : idx; // list me nahi hai to sabse neeche
+};
+
+const compareSubjects = (a, b) => {
+  const ra = subjectRank(a);
+  const rb = subjectRank(b);
+  if (ra !== rb) return ra - rb;
+  return String(a).localeCompare(String(b), undefined, { numeric: true });
+};
+
 // 👇 LocalStorage helpers: session / class / exam yaad rakhne ke liye
 const LS_PREFIX = "mobileFinalResult_";
 const getSaved = (key, fallback, allowed) => {
@@ -68,7 +96,7 @@ export default function MobileFinalResult() {
   const [maxRand, setMaxRand] = useState(90);
 
   // =========================================================
-  // 1. CLASS + EXAM WISE SUBJECTS (Timetable se)
+  // 1. CLASS + EXAM WISE SUBJECTS (Timetable se, custom order me)
   // =========================================================
   useEffect(() => {
     const fetchTimetableSubjects = async () => {
@@ -96,7 +124,8 @@ export default function MobileFinalResult() {
               });
             });
 
-            subjectsForExam.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            // ✅ English, Hindi, Math, Science, SST, Computer, Urdu, Sanskrit, GK, Art
+            subjectsForExam.sort(compareSubjects);
             perExam[examType] = subjectsForExam;
           });
 
@@ -194,6 +223,9 @@ export default function MobileFinalResult() {
         merged.push({ subject: r.subject, total: r.total, marks: String(r.marks) });
       }
     });
+
+    // ✅ Edit me bhi wahi custom order
+    merged.sort((a, b) => compareSubjects(a.subject, b.subject));
 
     setRows(merged);
     setShowForm(true);
