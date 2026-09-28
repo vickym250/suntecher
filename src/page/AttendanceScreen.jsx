@@ -23,9 +23,25 @@ export default function AttendanceWeb() {
   const currentAppSession = getCurrentSession();
 
   /* ================= STATES ================= */
-  const [selectedMonth, setSelectedMonth] = useState(months[today.getMonth()]);
-  const [day, setDay] = useState(today.getDate());
-  const [selectedClass, setSelectedClass] = useState("Class 10");
+  const readSaved = (key) => {
+    try { return localStorage.getItem(key); } catch { return null; }
+  };
+
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const saved = readSaved("att_month");
+    return months.includes(saved) ? saved : months[today.getMonth()];
+  });
+  const [day, setDay] = useState(() => {
+    const saved = parseInt(readSaved("att_day"), 10);
+    const savedMonth = readSaved("att_month");
+    const m = months.includes(savedMonth) ? months.indexOf(savedMonth) : today.getMonth();
+    const daysInMonth = new Date(today.getFullYear(), m + 1, 0).getDate();
+    return saved >= 1 && saved <= daysInMonth ? saved : today.getDate();
+  });
+  const [selectedClass, setSelectedClass] = useState(() => {
+    const saved = readSaved("att_class");
+    return classes.includes(saved) ? saved : "Class 10";
+  });
   const [students, setStudents] = useState([]);
   const [holidays, setHolidays] = useState({}); 
   const [loading, setLoading] = useState(true);
@@ -68,6 +84,21 @@ export default function AttendanceWeb() {
 
     return () => { unsub(); unsubH(); };
   }, [currentAppSession, selectedMonth]);
+
+  // Month badalne par agar day us month me exist nahi karta (jaise 31 Feb), to last day set karo
+  useEffect(() => {
+    const daysInMonth = new Date(today.getFullYear(), months.indexOf(selectedMonth) + 1, 0).getDate();
+    if (day > daysInMonth) setDay(daysInMonth);
+  }, [selectedMonth]);
+
+  // Class / month / day localStorage me save karo
+  useEffect(() => {
+    try {
+      localStorage.setItem("att_class", selectedClass);
+      localStorage.setItem("att_month", selectedMonth);
+      localStorage.setItem("att_day", String(day));
+    } catch {}
+  }, [selectedClass, selectedMonth, day]);
 
   // Class / month / day badalne par purani unsaved selection hata do
   useEffect(() => {
