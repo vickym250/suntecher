@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { db } from "../firebase"; 
 import { 
   collection, getDocs, query, where, serverTimestamp,
-  doc, updateDoc, onSnapshot, getDoc, runTransaction 
+  doc, onSnapshot, runTransaction 
 } from "firebase/firestore";
 import { toast, Toaster } from "react-hot-toast";
 import { Trophy, Search, Plus, X, Edit3, Save, ArrowLeft, Zap, Calendar, Hash, CheckCircle2 } from "lucide-react";
@@ -12,12 +12,15 @@ const examTypes = ["Quarterly", "Half-Yearly", "Annual"];
 const sessionsList = ["2024-25", "2025-26", "2026-27", "2027-28"];
 
 // 👇 FIXED CLASS LIST: Nursery, LKG, UKG, Class 1 se Class 8 tak
-// (Desktop FinalResultPage.jsx jaisa hi — school_config/master_data ab use nahi hoga)
+// (Desktop FinalResultPage.jsx jaisa hi)
 const FIXED_CLASSES = [
   "Nursery", "LKG", "UKG",
   "Class 1", "Class 2", "Class 3", "Class 4",
   "Class 5", "Class 6", "Class 7", "Class 8"
 ];
+
+// Subject naam match karne ke liye (marksheet jaisa normalize)
+const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 
 export default function MobileFinalResult() {
   const navigate = useNavigate();
@@ -27,8 +30,8 @@ export default function MobileFinalResult() {
   const [loading, setLoading] = useState(false);
   const [classesList, setClassesList] = useState([]);
 
-  // 👇 Ab shape: { className: { Annual: [subjects], "Half-Yearly": [subjects], Quarterly: [subjects] } }
-  // Timetables/{className} doc se aata hai — AdmitCardGenerator.jsx / FinalResultPage.jsx wali hi source
+  // Shape: { className: { Annual: [subjects], "Half-Yearly": [subjects], Quarterly: [subjects] } }
+  // Timetables/{className} doc se aata hai — AdmitCardGenerator / FinalResultPage wali hi source
   const [dynamicSubjectMaster, setDynamicSubjectMaster] = useState({});
 
   const [allStudents, setAllStudents] = useState([]); 
@@ -46,16 +49,12 @@ export default function MobileFinalResult() {
   const [maxRand, setMaxRand] = useState(90);
 
   // =========================================================
-  // 1. CLASS + EXAM WISE SUBJECTS (Timetable se — Admit Card wali hi source)
-  // Firestore: Timetables/{className} doc → Annual/Half-Yearly/Quarterly arrays,
-  // har entry: { date, day, subject, subject2, isHoliday }
+  // 1. CLASS + EXAM WISE SUBJECTS (Timetable se)
   // =========================================================
   useEffect(() => {
     const fetchTimetableSubjects = async () => {
       try {
         const snap = await getDocs(collection(db, "Timetables"));
-
-        // mapping shape: { className: { Annual: [subjects], "Half-Yearly": [subjects], Quarterly: [subjects] } }
         const mapping = {};
 
         snap.docs.forEach((classDoc) => {
@@ -71,7 +70,7 @@ export default function MobileFinalResult() {
               if (!p || p.isHoliday) return; // holiday din skip
               [p.subject, p.subject2].forEach((rawSub) => {
                 const sub = String(rawSub || "").trim();
-                if (!sub || sub === "---") return; // "---" matlab us slot mein exam nahi
+                if (!sub || sub === "---") return; // "---" = us slot mein exam nahi
                 if (!subjectsForExam.some((s) => s.toLowerCase() === sub.toLowerCase())) {
                   subjectsForExam.push(sub);
                 }
@@ -86,8 +85,6 @@ export default function MobileFinalResult() {
         });
 
         setDynamicSubjectMaster(mapping);
-
-        // Class list hamesha Nursery se Class 8 tak fixed rahega
         setClassesList(FIXED_CLASSES);
         setCls((prev) => prev || FIXED_CLASSES[0]);
       } catch (err) {
@@ -118,7 +115,7 @@ export default function MobileFinalResult() {
     return () => unsub();
   }, [cls, exam, session]);
 
-  // 3. Fetch Students Logic
+  // 3. Fetch Students + Timetable subjects rows
   useEffect(() => {
     if (!cls) return;
     const fetchStudents = async () => {
@@ -130,18 +127,21 @@ export default function MobileFinalResult() {
     fetchStudents();
 
     if (!editingId) {
-      // Subjects ab class + exam dono ke hisaab se aate hain (Timetable ka actual datesheet)
       const subsForExam = dynamicSubjectMaster[cls]?.[exam] || [];
       setRows(subsForExam.map(sub => ({ subject: sub, total: masterMax, marks: "" })));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cls, exam, editingId, session, dynamicSubjectMaster]);
 
   // 4. MAGIC FILLER FUNCTION
   const autoFillRandomMarks = () => {
     if (!selectedStudent) return toast.error("Pehle Student Select Karein!");
+    const min = parseInt(minRand);
+    const max = parseInt(maxRand);
+    if (isNaN(min) || isNaN(max) || min > max) return toast.error("Check Min/Max Range!");
     setRows(rows.map(r => ({
       ...r,
-      marks: (Math.floor(Math.random() * (parseInt(maxRand) - parseInt(minRand) + 1)) + parseInt(minRand)).toString()
+      marks: (Math.floor(Math.random() * (max - min + 1)) + min).toString()
     })));
     toast.success("Magic Fill Applied! ✨");
   };
@@ -151,60 +151,116 @@ export default function MobileFinalResult() {
     setRows(rows.map(r => ({ ...r, total: val })));
   };
 
-  // 5. SAVE RESULT (Transaction with Admin Sync)
+  // ✅ Edit: student ki asli ID + timetable subjects ke saath saved marks merge
+  const handleEdit = (item) => {
+    const stu = allStudents.find(s => String(s.id) === String(item.studentId));
+    setEditingId(item.id);
+    setSelectedStudent(stu || { ...item, id: item.studentId }); // student ki ID, result ki nahi
+    setStudentSearch(item.name || "");
+
+    const tt = dynamicSubjectMaster[cls]?.[exam] || [];
+    const saved = item.rows || [];
+
+    const merged = tt.map(sub => {
+      const f = saved.find(r => normalize(r.subject) === normalize(sub));
+      return {
+        subject: sub,
+        total: f ? f.total : masterMax,
+        marks: f ? String(f.marks) : ""
+      };
+    });
+    // Timetable me na hone wale saved subjects bhi rakho
+    saved.forEach(r => {
+      if (!merged.some(m => normalize(m.subject) === normalize(r.subject))) {
+        merged.push({ subject: r.subject, total: r.total, marks: String(r.marks) });
+      }
+    });
+
+    setRows(merged);
+    setShowForm(true);
+  };
+
+  // 5. SAVE RESULT (Desktop jaisa logic)
   const saveResult = async () => {
     if (!selectedStudent) return toast.error("Student select karein!");
     if (!rows.length) return toast.error("Timetable me is class/exam ka subject nahi mila!");
+
+    const studentId = String(selectedStudent.id);
+    const isAlreadyDone = resultList.some(res => String(res.studentId) === studentId && !res.delete_at);
+    if (!editingId && isAlreadyDone) return toast.error("Result already exists!");
+
     setLoading(true);
     try {
-      // 👇 Student ka poora data (fatherName, motherName, dob, address, photoURL, regNo,
-      //    examRollNo, aur koi bhi naya field) automatically saved ho jayega — desktop jaisa hi.
-      const { id: _studentDocId, ...studentData } = selectedStudent || {};
+      // ✅ Result-only fields hata do, sirf student ka data rakho
+      const {
+        id: _id, rows: _r, srNo: _s, createdAt: _c, updatedAt: _u,
+        delete_at: _d, studentId: _sid, exam: _e, ...studentData
+      } = selectedStudent;
+
+      // ✅ Saare subjects save (marks khali = 0), desktop jaisa
+      const cleanRows = rows
+        .filter(r => r.subject && r.subject.trim() !== "")
+        .map(r => ({
+          subject: r.subject.trim(),
+          total: Number(r.total) || 0,
+          marks: Number(r.marks) || 0
+        }));
 
       await runTransaction(db, async (transaction) => {
-        let finalSrNo = editingId ? (resultList.find(r => r.id === editingId)?.srNo) : null;
-
+        let finalSrNo;
         if (!editingId) {
-          const counterId = `counter_${cls}_${exam}_${session}`.replace(/\s+/g, "");
-          const counterRef = doc(db, "counters", counterId);
-          const counterSnap = await transaction.get(counterRef);
-          if (!counterSnap.exists()) {
-            finalSrNo = 1;
-            transaction.set(counterRef, { current: 1 });
-          } else {
-            finalSrNo = counterSnap.data().current + 1;
-            transaction.update(counterRef, { current: finalSrNo });
-          }
+          // ✅ Desktop jaisa srNo
+          const qCount = query(
+            collection(db, "examResults"),
+            where("className", "==", cls),
+            where("exam", "==", exam),
+            where("session", "==", session),
+            where("delete_at", "==", null)
+          );
+          const countSnap = await getDocs(qCount);
+          finalSrNo = countSnap.size + 1;
         }
 
-        const resDocRef = editingId ? doc(db, "examResults", editingId) : doc(collection(db, "examResults"));
+        const resDocRef = editingId
+          ? doc(db, "examResults", editingId)
+          : doc(collection(db, "examResults"));
+
         const payload = {
-          ...studentData,               // 👈 student ka poora data
-          className: cls, exam, session,
-          studentId: selectedStudent.id, // 👈 student ki apni ID alag se, guaranteed save
+          ...studentData,
+          session,
+          studentId,
           name: selectedStudent.name || "",
+          className: cls,
+          exam,
           examRollNo: selectedStudent.examRollNo || "", // Admin sync
           roll: selectedStudent.examRollNo || "",       // Old sync
-          rows: rows.filter(r => r.subject && r.marks !== "").map(r => ({
-            subject: r.subject.trim(),
-            total: Number(r.total) || 0,
-            marks: Number(r.marks) || 0
-          })),
+          rows: cleanRows,
           updatedAt: serverTimestamp(),
-          srNo: finalSrNo,
-          delete_at: null 
+          delete_at: null
         };
 
         if (editingId) transaction.update(resDocRef, payload);
         else {
+          payload.srNo = finalSrNo;
           payload.createdAt = serverTimestamp();
           transaction.set(resDocRef, payload);
         }
       });
+
       setShowForm(false);
+      setEditingId(null);
       toast.success("Result Published! 🎉");
-    } catch (error) { toast.error("Save failed!"); console.error(error); }
-    setLoading(false);
+    } catch (error) {
+      toast.error("Save failed!");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
   };
 
   return (
@@ -257,7 +313,7 @@ export default function MobileFinalResult() {
                   <p className="text-[9px] text-slate-400 font-black uppercase">Roll: {item.examRollNo} • {item.exam}</p>
                 </div>
               </div>
-              <button onClick={() => { setEditingId(item.id); setSelectedStudent(item); setRows(item.rows); setShowForm(true); }} className="p-3 bg-slate-50 text-indigo-400 rounded-2xl"><Edit3 size={18}/></button>
+              <button onClick={() => handleEdit(item)} className="p-3 bg-slate-50 text-indigo-400 rounded-2xl"><Edit3 size={18}/></button>
             </div>
           ))}
         </div>
@@ -269,7 +325,7 @@ export default function MobileFinalResult() {
       {/* ENTRY FORM MODAL */}
       {showForm && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-end italic">
-          <div className="bg-[#F8FAFC] w-full h-[94vh] rounded-t-[3.5rem] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300">
+          <div className="bg-[#F8FAFC] w-full h-[94vh] rounded-t-[3.5rem] flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300 relative">
             <div className="px-8 pt-4 pb-6 bg-white border-b">
               <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6"></div>
               <div className="flex justify-between items-center">
@@ -277,13 +333,13 @@ export default function MobileFinalResult() {
                   <h2 className="text-xl font-black uppercase text-slate-800 tracking-tighter">Result Entry</h2>
                   <p className="text-[10px] font-bold text-indigo-500 uppercase">{cls} • {exam} • {session}</p>
                 </div>
-                <button onClick={() => setShowForm(false)} className="p-3 bg-slate-100 text-slate-400 rounded-full"><X size={20}/></button>
+                <button onClick={closeForm} className="p-3 bg-slate-100 text-slate-400 rounded-full"><X size={20}/></button>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar pb-32">
               
-              {/* MAGIC FILL & MAX SETTINGS (UPAR RAKHA HAI) */}
+              {/* MAGIC FILL & MAX SETTINGS */}
               <div className="bg-slate-900 p-6 rounded-[2.5rem] text-white shadow-xl">
                 <div className="flex items-center justify-between mb-4">
                     <p className="text-[9px] font-black opacity-50 uppercase flex items-center gap-1"><Zap size={10} fill="currentColor"/> Magic Fill Control</p>
@@ -308,22 +364,27 @@ export default function MobileFinalResult() {
               <div className="relative">
                 <div className="flex items-center bg-white border rounded-3xl px-5 py-4 shadow-sm focus-within:ring-2 ring-indigo-500/20">
                   <Search size={18} className="text-slate-400" />
-                  <input type="text" placeholder="Search Student..." className="bg-transparent flex-1 ml-3 font-bold text-sm outline-none" value={studentSearch} onFocus={() => setIsSearchFocused(true)} onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)} onChange={(e) => {setStudentSearch(e.target.value); setSelectedStudent(null);}} disabled={editingId} />
+                  <input type="text" placeholder="Search Student..." className="bg-transparent flex-1 ml-3 font-bold text-sm outline-none" value={studentSearch} onFocus={() => setIsSearchFocused(true)} onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)} onChange={(e) => {setStudentSearch(e.target.value); setSelectedStudent(null);}} disabled={Boolean(editingId)} />
                 </div>
                 {isSearchFocused && !selectedStudent && !editingId && (
                   <div className="absolute top-full left-0 right-0 bg-white border rounded-3xl mt-2 shadow-2xl z-50 max-h-52 overflow-y-auto no-scrollbar p-2">
-                    {allStudents.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase())).map(s => {
-                      const isDone = resultList.some(res => res.studentId === s.id);
-                      return (
-                        <button key={s.id} onClick={() => { if(isDone) return toast.error("Result Already Published!"); setSelectedStudent(s); setStudentSearch(s.name); }} className={`w-full p-4 text-left rounded-2xl border-b last:border-0 flex justify-between items-center ${isDone ? 'bg-green-50 opacity-60' : 'active:bg-indigo-50'}`}>
-                          <div>
-                            <span className={`font-black text-xs uppercase block ${isDone ? 'text-green-700' : 'text-slate-700'}`}>{s.name}</span>
-                            <span className="text-[8px] font-bold text-slate-400">ROLL: {s.examRollNo}</span>
-                          </div>
-                          {isDone ? <CheckCircle2 size={18} className="text-green-600" /> : <Hash size={14} className="text-slate-200" />}
-                        </button>
-                      );
-                    })}
+                    {allStudents
+                      .filter(s =>
+                        (s.name || "").toLowerCase().includes(studentSearch.toLowerCase()) ||
+                        (s.examRollNo && s.examRollNo.toString().includes(studentSearch)))
+                      .map(s => {
+                        // resultList pehle se cls + exam + session se filtered hai
+                        const isDone = resultList.some(res => String(res.studentId) === String(s.id) && !res.delete_at);
+                        return (
+                          <button key={s.id} onClick={() => { if(isDone) return toast.error("Result Already Published!"); setSelectedStudent(s); setStudentSearch(s.name); }} className={`w-full p-4 text-left rounded-2xl border-b last:border-0 flex justify-between items-center ${isDone ? 'bg-green-50 opacity-60' : 'active:bg-indigo-50'}`}>
+                            <div>
+                              <span className={`font-black text-xs uppercase block ${isDone ? 'text-green-700' : 'text-slate-700'}`}>{s.name}</span>
+                              <span className="text-[8px] font-bold text-slate-400">ROLL: {s.examRollNo}</span>
+                            </div>
+                            {isDone ? <CheckCircle2 size={18} className="text-green-600" /> : <Hash size={14} className="text-slate-200" />}
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
               </div>
@@ -344,7 +405,13 @@ export default function MobileFinalResult() {
                       <span className="text-[8px] font-bold text-slate-300 uppercase italic">Out of {r.total}</span>
                     </div>
                     <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 focus-within:bg-white focus-within:border-indigo-400 transition-all">
-                        <input type="number" value={r.marks} onChange={(e) => { const n = [...rows]; n[i].marks = e.target.value; setRows(n); }} className="w-10 text-center font-black text-indigo-600 bg-transparent outline-none text-sm" placeholder="--" />
+                        <input
+                          type="number"
+                          value={r.marks}
+                          onChange={(e) => setRows(rows.map((row, idx) => idx === i ? { ...row, marks: e.target.value } : row))}
+                          className="w-10 text-center font-black text-indigo-600 bg-transparent outline-none text-sm"
+                          placeholder="--"
+                        />
                     </div>
                   </div>
                 ))}
