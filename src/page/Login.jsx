@@ -95,7 +95,7 @@ export default function LoginWeb() {
              <span className="text-4xl text-indigo-600 font-bold">🏫</span>
           </div>
           <h1 className="text-3xl font-black text-slate-800 italic uppercase tracking-tight">Teacher Login</h1>
-          <p className="text-slate-400 font-bold text-xs mt-2 uppercase tracking-widest italic">Bright Future Public School</p>
+          <p className="text-slate-400 font-bold text-xs mt-2 uppercase tracking-widest italic">Sun Shine English Medium School</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
