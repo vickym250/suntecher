@@ -21,17 +21,16 @@ const FIXED_CLASSES = [
 // Subject naam match karne ke liye (marksheet jaisa normalize)
 const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 
-// 👇 SUBJECT ORDER: English, Hindi, Math, Science, SST, Computer, Urdu, Sanskrit, GK, Art
-// Har subject ke alag-alag spelling (normalize ke baad) alias me diye hain.
+// 👇 SUBJECT ORDER: English, Hindi, Math, Sci, S.St, Computer, Urdu/Sanskrit, GK, Art
+// Ek array = ek slot. Urdu aur Sanskrit ek hi slot me hain.
 const SUBJECT_ORDER = [
   ["english", "eng"],
   ["hindi"],
   ["math", "maths", "mathematics"],
   ["science", "sci"],
-  ["sst", "socialscience", "socialstudies"],
+  ["sst", "socialscience", "socialstudies", "sosc", "socialsci"],
   ["computer", "computers", "computerscience"],
-  ["urdu"],
-  ["sanskrit"],
+  ["urdu", "sanskrit"],   // 👈 dono same slot (Urdu pehle, Sanskrit baad me)
   ["gk", "generalknowledge"],
   ["art", "arts", "drawing"]
 ];
@@ -42,10 +41,20 @@ const subjectRank = (name) => {
   return idx === -1 ? 999 : idx; // list me nahi hai to sabse neeche
 };
 
+// Same slot ke andar order (Urdu, Sanskrit)
+const subRank = (name) => {
+  const n = normalize(name);
+  const group = SUBJECT_ORDER.find((aliases) => aliases.includes(n));
+  return group ? group.indexOf(n) : 0;
+};
+
 const compareSubjects = (a, b) => {
   const ra = subjectRank(a);
   const rb = subjectRank(b);
   if (ra !== rb) return ra - rb;
+  const sa = subRank(a);
+  const sb = subRank(b);
+  if (sa !== sb) return sa - sb;
   return String(a).localeCompare(String(b), undefined, { numeric: true });
 };
 
@@ -124,7 +133,7 @@ export default function MobileFinalResult() {
               });
             });
 
-            // ✅ English, Hindi, Math, Science, SST, Computer, Urdu, Sanskrit, GK, Art
+            // ✅ English, Hindi, Math, Sci, S.St, Computer, Urdu/Sanskrit, GK, Art
             subjectsForExam.sort(compareSubjects);
             perExam[examType] = subjectsForExam;
           });
