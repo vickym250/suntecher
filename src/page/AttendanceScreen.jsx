@@ -4,7 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { toast, Toaster } from "react-hot-toast";
-import { Calendar, ShieldAlert, ArrowLeft } from "lucide-react";
+import { Calendar, ShieldAlert, ArrowLeft, Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 /* ================= CONSTANTS ================= */
@@ -47,6 +47,7 @@ export default function AttendanceWeb() {
   const [loading, setLoading] = useState(true);
   const [tempAttendance, setTempAttendance] = useState({});
   const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   /* ================= HELPERS & VALIDATION ================= */
   const selectedDateObject = new Date(today.getFullYear(), months.indexOf(selectedMonth), day);
@@ -105,6 +106,11 @@ export default function AttendanceWeb() {
   useEffect(() => {
     setTempAttendance({});
   }, [selectedClass, selectedMonth, day]);
+
+  // Class badalne par search clear karo
+  useEffect(() => {
+    setSearchTerm("");
+  }, [selectedClass]);
 
   /* ================= ACTIONS ================= */
   const selectAttendance = (studentId, status) => {
@@ -242,6 +248,16 @@ export default function AttendanceWeb() {
   );
 
   const filteredData = students.filter((s) => s.className === selectedClass);
+  // Search: naam, father ka naam, roll number ya exam roll se (table me sirf yahi dikhega)
+  const q = searchTerm.trim().toLowerCase();
+  const visibleData = q
+    ? filteredData.filter((s) =>
+        String(s.name || "").toLowerCase().includes(q) ||
+        String(s.fatherName || s.father || "").toLowerCase().includes(q) ||
+        String(s.rollNumber ?? "").toLowerCase().includes(q) ||
+        String(s.examRollNo ?? "").toLowerCase().includes(q)
+      )
+    : filteredData;
   const pendingCount = filteredData.filter(s => !s.attendance?.[selectedMonth]?.[attendanceDayKey] && !tempAttendance[s.id]).length;
 
   return (
@@ -330,6 +346,25 @@ export default function AttendanceWeb() {
           </div>
         )}
 
+        {/* SEARCH BAR */}
+        {filteredData.length > 0 && (
+          <div className="flex items-center bg-white border border-slate-100 rounded-2xl px-5 py-3 shadow-sm mb-4 focus-within:ring-2 ring-indigo-500/20">
+            <Search size={18} className="text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by name, father name, roll ya exam roll..."
+              className="flex-1 ml-3 bg-transparent outline-none font-bold text-sm text-slate-700 placeholder:text-slate-300"
+            />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm("")} className="p-1 text-slate-400 hover:text-slate-600">
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        )}
+
         {/* STUDENT LIST */}
         {!isFutureDate ? (
           <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden mb-10">
@@ -341,7 +376,7 @@ export default function AttendanceWeb() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
-                {filteredData.map((item) => {
+                {visibleData.map((item) => {
                   const savedStatus = item.attendance?.[selectedMonth]?.[attendanceDayKey];
                   const currentStatus = tempAttendance[item.id] || savedStatus;
                   const isMarked = !!savedStatus;
@@ -390,7 +425,7 @@ export default function AttendanceWeb() {
                 })}
               </tbody>
             </table>
-            {filteredData.length === 0 && (
+            {visibleData.length === 0 && (
               <div className="p-20 text-center text-slate-300 font-bold uppercase italic tracking-widest">No students found</div>
             )}
           </div>
