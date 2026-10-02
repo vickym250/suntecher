@@ -30,7 +30,7 @@ const SUBJECT_ORDER = [
   ["science", "sci"],
   ["sst", "socialscience", "socialstudies", "sosc", "socialsci"],
   ["computer", "computers", "computerscience"],
-  ["urdu", "sanskrit"],   // 👈 dono same slot (Urdu pehle, Sanskrit baad me)
+  ["urdu", "sanskrit", "sanskriturdu", "urdusanskrit"],   // 👈 same slot ("Sanskrit/Urdu" ek hi naam ho tab bhi)
   ["gk", "generalknowledge"],
   ["art", "arts", "drawing"]
 ];
@@ -46,6 +46,12 @@ const subRank = (name) => {
   const n = normalize(name);
   const group = SUBJECT_ORDER.find((aliases) => aliases.includes(n));
   return group ? group.indexOf(n) : 0;
+};
+
+// Screen par "Urdu/Sanskrit" dikhane ke liye (database ka naam nahi badalta)
+const displayName = (s) => {
+  const n = normalize(s);
+  return n === "sanskriturdu" || n === "urdusanskrit" ? "Urdu/Sanskrit" : s;
 };
 
 const compareSubjects = (a, b) => {
@@ -461,7 +467,7 @@ export default function MobileFinalResult() {
                   <div key={i} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
                     <div className="h-8 w-8 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-300 text-[10px]">{i + 1}</div>
                     <div className="flex-1">
-                      <span className="font-black text-slate-700 uppercase text-[11px] block italic leading-tight">{r.subject}</span>
+                      <span className="font-black text-slate-700 uppercase text-[11px] block italic leading-tight">{displayName(r.subject)}</span>
                       <span className="text-[8px] font-bold text-slate-300 uppercase italic">Out of {r.total}</span>
                     </div>
                     <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 focus-within:bg-white focus-within:border-indigo-400 transition-all">
