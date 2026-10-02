@@ -18,79 +18,55 @@ const FIXED_CLASSES = [
   "Class 5", "Class 6", "Class 7", "Class 8"
 ];
 
+// =========================================================
+// 👇 STATIC SUBJECTS (timetable se kuch nahi aata)
+// =========================================================
+const JUNIOR_CLASSES = ["Nursery", "LKG", "UKG"];
+
+// Nursery, LKG, UKG
+const JUNIOR_SUBJECTS = [
+  "Hindi", "Hindi-Oral",
+  "English", "English-Oral",
+  "Math", "Math-Oral",
+  "Art"
+];
+
+// Class 1 se Class 8
+const SENIOR_SUBJECTS = [
+  "English", "Hindi", "Math", "Science", "S.St",
+  "Computer", "Urdu/Sanskrit", "GK", "Art"
+];
+
+const getSubjectsFor = (className) =>
+  JUNIOR_CLASSES.includes(className) ? JUNIOR_SUBJECTS : SENIOR_SUBJECTS;
+
 // Subject naam match karne ke liye (marksheet jaisa normalize)
 const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 
-// 👇 SUBJECT ORDER (har class me yahi order): English, Hindi, Math, Science, S.St, Computer, Urdu/Sanskrit, GK, Art
-// Ek array = ek slot. Urdu aur Sanskrit ek hi slot me hain.
-const SUBJECT_ORDER = [
+// Purane saved results ke alag spelling (Mathematics, G.S., Sanskrit/Urdu...) ko
+// naye static naam se match karne ke liye. Sirf EXACT match (isliye Hindi aur Hindi-Oral alag rehte hain)
+const ALIAS_SLOTS = [
   ["english", "eng"],
   ["hindi"],
   ["math", "maths", "mathematics", "mathematic"],
-  ["science", "sci", "generalscience", "gsci", "gs", "gsc", "gscience", "gensci", "gensc"],   // 👈 GS / G.S. / G.Sc. sab Science
+  ["science", "sci", "generalscience", "gsci", "gs", "gsc", "gscience", "gensci", "gensc"],
   ["sst", "ssc", "ss", "socialscience", "socialstudies", "sosc", "socialsci", "sscience", "sstudies"],
   ["computer", "computers", "computerscience", "comp"],
-  ["urdu", "sanskrit", "sanskriturdu", "urdusanskrit"],   // 👈 same slot
+  ["urdu", "sanskrit", "sanskriturdu", "urdusanskrit"],
   ["gk", "generalknowledge", "genknowledge", "gknowledge"],
-  ["art", "arts", "drawing", "artcraft", "artandcraft"]
+  ["art", "arts", "drawing", "artcraft", "artandcraft"],
+  ["hindioral", "oralhindi"],
+  ["englishoral", "oralenglish"],
+  ["mathoral", "mathsoral", "mathematicsoral", "oralmath", "oralmaths"]
 ];
 
-const subjectRank = (name) => {
-  const n = normalize(name);
-  // 1) exact match
-  const exact = SUBJECT_ORDER.findIndex((aliases) => aliases.includes(n));
-  if (exact !== -1) return exact;
-  // 2) fallback: naam ke andar alias mile (e.g. "englishgrammar", "hindivyakaran")
-  //    sabse lamba alias jeetta hai (taaki "socialsciences" Science me na chala jaye)
-  let bestIdx = -1;
-  let bestLen = 0;
-  SUBJECT_ORDER.forEach((aliases, i) => {
-    aliases.forEach((a) => {
-      if (a.length >= 4 && n.includes(a) && a.length > bestLen) {
-        bestLen = a.length;
-        bestIdx = i;
-      }
-    });
-  });
-  return bestIdx === -1 ? 999 : bestIdx; // list me nahi hai to sabse neeche
-};
+const slotOf = (name) => ALIAS_SLOTS.findIndex((a) => a.includes(normalize(name)));
 
-// Same slot ke andar order (Urdu, Sanskrit)
-const subRank = (name) => {
-  const n = normalize(name);
-  const group = SUBJECT_ORDER.find((aliases) => aliases.includes(n));
-  return group ? group.indexOf(n) : 0;
-};
-
-// Screen par "Urdu/Sanskrit" dikhane ke liye (database ka naam nahi badalta)
-const displayName = (s) => {
-  const n = normalize(s);
-  return n === "sanskriturdu" || n === "urdusanskrit" ? "Urdu/Sanskrit" : s;
-};
-
-const compareSubjects = (a, b) => {
-  const ra = subjectRank(a);
-  const rb = subjectRank(b);
-  if (ra !== rb) return ra - rb;
-  const sa = subRank(a);
-  const sb = subRank(b);
-  if (sa !== sb) return sa - sb;
-  return String(a).localeCompare(String(b), undefined, { numeric: true });
-};
-
-// Same subject match (Urdu ya Sanskrit dono "Urdu/Sanskrit" slot me)
-const sameSub = (a, b) =>
-  normalize(a) === normalize(b) ||
-  (subjectRank(a) !== 999 && subjectRank(a) === subjectRank(b));
-
-// 👇 Subjects sirf TIMETABLE se aate hain, lekin order har class me same (SUBJECT_ORDER wala)
-const getSubjectsFor = (master, className, examType) => {
-  const tt = master[className]?.[examType] || [];
-  const list = [];
-  tt.forEach((s) => {
-    if (!list.some((x) => sameSub(x, s))) list.push(s); // same slot ka duplicate hata do
-  });
-  return list.sort(compareSubjects);
+// Same subject? (naam same ya same alias slot)
+const sameSub = (a, b) => {
+  if (normalize(a) === normalize(b)) return true;
+  const sa = slotOf(a);
+  return sa !== -1 && sa === slotOf(b);
 };
 
 // 👇 LocalStorage helpers: session / class / exam yaad rakhne ke liye
@@ -114,17 +90,13 @@ export default function MobileFinalResult() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [classesList, setClassesList] = useState([]);
-
-  // Shape: { className: { Annual: [subjects], "Half-Yearly": [subjects], Quarterly: [subjects] } }
-  // Timetables/{className} doc se aata hai
-  const [dynamicSubjectMaster, setDynamicSubjectMaster] = useState({});
+  const classesList = FIXED_CLASSES;
 
   const [allStudents, setAllStudents] = useState([]); 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentSearch, setStudentSearch] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [cls, setCls] = useState(() => getSaved("cls", "", FIXED_CLASSES)); 
+  const [cls, setCls] = useState(() => getSaved("cls", FIXED_CLASSES[0], FIXED_CLASSES)); 
   const [exam, setExam] = useState(() => getSaved("exam", "Annual", examTypes));
   const [rows, setRows] = useState([]);
   const [resultList, setResultList] = useState([]);
@@ -139,58 +111,7 @@ export default function MobileFinalResult() {
   const [minRand, setMinRand] = useState(33);
   const [maxRand, setMaxRand] = useState(90);
 
-  // =========================================================
-  // 1. CLASS + EXAM WISE SUBJECTS (Timetable se, custom order me)
-  // =========================================================
-  useEffect(() => {
-    const fetchTimetableSubjects = async () => {
-      try {
-        const snap = await getDocs(collection(db, "Timetables"));
-        const mapping = {};
-
-        snap.docs.forEach((classDoc) => {
-          const className = classDoc.id;
-          const data = classDoc.data() || {};
-          const perExam = {};
-
-          examTypes.forEach((examType) => {
-            const periods = Array.isArray(data[examType]) ? data[examType] : [];
-            const subjectsForExam = [];
-
-            periods.forEach((p) => {
-              if (!p || p.isHoliday) return; // holiday din skip
-              [p.subject, p.subject2].forEach((rawSub) => {
-                const sub = String(rawSub || "").trim();
-                if (!sub || sub === "---") return; // "---" = us slot mein exam nahi
-                if (!subjectsForExam.some((s) => s.toLowerCase() === sub.toLowerCase())) {
-                  subjectsForExam.push(sub);
-                }
-              });
-            });
-
-            // ✅ English, Hindi, Math, Science, S.St, Computer, Urdu/Sanskrit, GK, Art
-            subjectsForExam.sort(compareSubjects);
-            perExam[examType] = subjectsForExam;
-          });
-
-          mapping[className] = perExam;
-        });
-
-        setDynamicSubjectMaster(mapping);
-        setClassesList(FIXED_CLASSES);
-        setCls((prev) => prev || FIXED_CLASSES[0]);
-      } catch (err) {
-        console.error("Timetable subjects fetch error:", err);
-        toast.error("Timetable se subjects load nahi ho paaye.");
-        setClassesList(FIXED_CLASSES);
-        setCls((prev) => prev || FIXED_CLASSES[0]);
-      }
-    };
-
-    fetchTimetableSubjects();
-  }, []);
-
-  // 2. Real-time Results Listener (Synced with Admin)
+  // 1. Real-time Results Listener (Synced with Admin)
   useEffect(() => {
     if (!cls) return;
     const q = query(
@@ -207,7 +128,7 @@ export default function MobileFinalResult() {
     return () => unsub();
   }, [cls, exam, session]);
 
-  // 3. Fetch Students + Timetable subjects rows
+  // 2. Fetch Students + static subject rows
   useEffect(() => {
     if (!cls) return;
     const fetchStudents = async () => {
@@ -219,13 +140,12 @@ export default function MobileFinalResult() {
     fetchStudents();
 
     if (!editingId) {
-      const subsForExam = getSubjectsFor(dynamicSubjectMaster, cls, exam);
-      setRows(subsForExam.map(sub => ({ subject: sub, total: masterMax, marks: "" })));
+      setRows(getSubjectsFor(cls).map(sub => ({ subject: sub, total: masterMax, marks: "" })));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cls, exam, editingId, session, dynamicSubjectMaster]);
+  }, [cls, exam, editingId, session]);
 
-  // 4. MAGIC FILLER FUNCTION
+  // 3. MAGIC FILLER FUNCTION
   const autoFillRandomMarks = () => {
     if (!selectedStudent) return toast.error("Pehle Student Select Karein!");
     const min = parseInt(minRand);
@@ -243,17 +163,17 @@ export default function MobileFinalResult() {
     setRows(rows.map(r => ({ ...r, total: val })));
   };
 
-  // ✅ Edit: student ki asli ID + timetable subjects ke saath saved marks merge
+  // ✅ Edit: student ki asli ID + static subjects ke saath saved marks merge
   const handleEdit = (item) => {
     const stu = allStudents.find(s => String(s.id) === String(item.studentId));
     setEditingId(item.id);
     setSelectedStudent(stu || { ...item, id: item.studentId }); // student ki ID, result ki nahi
     setStudentSearch(item.name || "");
 
-    const tt = getSubjectsFor(dynamicSubjectMaster, cls, exam);
+    const fixed = getSubjectsFor(cls);
     const saved = item.rows || [];
 
-    const merged = tt.map(sub => {
+    const merged = fixed.map(sub => {
       const f = saved.find(r => sameSub(r.subject, sub));
       return {
         subject: sub,
@@ -261,24 +181,21 @@ export default function MobileFinalResult() {
         marks: f ? String(f.marks) : ""
       };
     });
-    // Timetable me na hone wale saved subjects bhi rakho (marks na jayein)
+    // Jo saved subjects list me match nahi hue unhe bhi neeche rakho (marks na jayein)
     saved.forEach(r => {
       if (!merged.some(m => sameSub(m.subject, r.subject))) {
         merged.push({ subject: r.subject, total: r.total, marks: String(r.marks) });
       }
     });
 
-    // ✅ Edit me bhi wahi custom order
-    merged.sort((a, b) => compareSubjects(a.subject, b.subject));
-
     setRows(merged);
     setShowForm(true);
   };
 
-  // 5. SAVE RESULT (Desktop jaisa logic)
+  // 4. SAVE RESULT (Desktop jaisa logic)
   const saveResult = async () => {
     if (!selectedStudent) return toast.error("Student select karein!");
-    if (!rows.length) return toast.error("Timetable me is class/exam ka subject nahi mila!");
+    if (!rows.length) return toast.error("Is class ka subject nahi mila!");
 
     const studentId = String(selectedStudent.id);
     const isAlreadyDone = resultList.some(res => String(res.studentId) === studentId && !res.delete_at);
@@ -489,14 +406,14 @@ export default function MobileFinalResult() {
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Subject-wise Score</p>
                 {rows.length === 0 && (
                   <div className="p-6 text-center text-red-400 text-[10px] font-black bg-white rounded-3xl border border-dashed">
-                    IS CLASS/EXAM KA SUBJECT TIMETABLE ME NAHI MILA.
+                    IS CLASS KA SUBJECT NAHI MILA.
                   </div>
                 )}
                 {rows.map((r, i) => (
                   <div key={i} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
                     <div className="h-8 w-8 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-300 text-[10px]">{i + 1}</div>
                     <div className="flex-1">
-                      <span className="font-black text-slate-700 uppercase text-[11px] block italic leading-tight">{displayName(r.subject)}</span>
+                      <span className="font-black text-slate-700 uppercase text-[11px] block italic leading-tight">{r.subject}</span>
                       <span className="text-[8px] font-bold text-slate-300 uppercase italic">Out of {r.total}</span>
                     </div>
                     <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 focus-within:bg-white focus-within:border-indigo-400 transition-all">
