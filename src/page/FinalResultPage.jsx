@@ -21,13 +21,13 @@ const FIXED_CLASSES = [
 // Subject naam match karne ke liye (marksheet jaisa normalize)
 const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 
-// 👇 SUBJECT ORDER: English, Hindi, Math, Sci, S.St, Computer, Urdu/Sanskrit, GK, Art
+// 👇 SUBJECT ORDER (har class me yahi order): English, Hindi, Math, Science, S.St, Computer, Urdu/Sanskrit, GK, Art
 // Ek array = ek slot. Urdu aur Sanskrit ek hi slot me hain.
 const SUBJECT_ORDER = [
   ["english", "eng"],
   ["hindi"],
   ["math", "maths", "mathematics", "mathematic"],
-  ["science", "sci", "generalscience", "gsci"],
+  ["science", "sci", "generalscience", "gsci", "gs", "gsc", "gscience", "gensci", "gensc"],   // 👈 GS / G.S. / G.Sc. sab Science
   ["sst", "ssc", "ss", "socialscience", "socialstudies", "sosc", "socialsci", "sscience", "sstudies"],
   ["computer", "computers", "computerscience", "comp"],
   ["urdu", "sanskrit", "sanskriturdu", "urdusanskrit"],   // 👈 same slot
@@ -78,27 +78,20 @@ const compareSubjects = (a, b) => {
   return String(a).localeCompare(String(b), undefined, { numeric: true });
 };
 
-// 👇 Har class me yahi list, isi order me aayegi
-const DEFAULT_SUBJECTS = [
-  "English", "Hindi", "Math", "Science", "S.St",
-  "Computer", "Urdu/Sanskrit", "GK", "Art"
-];
-
-// Timetable ke extra subjects (jo upar ki list me nahi hain) niche jud jaye
-const getSubjectsFor = (master, className, examType) => {
-  const tt = master[className]?.[examType] || [];
-  const extra = [];
-  tt.forEach((s) => {
-    if (subjectRank(s) !== 999) return; // fixed list me already hai
-    if (!extra.some((x) => normalize(x) === normalize(s))) extra.push(s);
-  });
-  return [...DEFAULT_SUBJECTS, ...extra];
-};
-
 // Same subject match (Urdu ya Sanskrit dono "Urdu/Sanskrit" slot me)
 const sameSub = (a, b) =>
   normalize(a) === normalize(b) ||
   (subjectRank(a) !== 999 && subjectRank(a) === subjectRank(b));
+
+// 👇 Subjects sirf TIMETABLE se aate hain, lekin order har class me same (SUBJECT_ORDER wala)
+const getSubjectsFor = (master, className, examType) => {
+  const tt = master[className]?.[examType] || [];
+  const list = [];
+  tt.forEach((s) => {
+    if (!list.some((x) => sameSub(x, s))) list.push(s); // same slot ka duplicate hata do
+  });
+  return list.sort(compareSubjects);
+};
 
 // 👇 LocalStorage helpers: session / class / exam yaad rakhne ke liye
 const LS_PREFIX = "mobileFinalResult_";
@@ -175,7 +168,7 @@ export default function MobileFinalResult() {
               });
             });
 
-            // ✅ English, Hindi, Math, Sci, S.St, Computer, Urdu/Sanskrit, GK, Art
+            // ✅ English, Hindi, Math, Science, S.St, Computer, Urdu/Sanskrit, GK, Art
             subjectsForExam.sort(compareSubjects);
             perExam[examType] = subjectsForExam;
           });
@@ -214,7 +207,7 @@ export default function MobileFinalResult() {
     return () => unsub();
   }, [cls, exam, session]);
 
-  // 3. Fetch Students + fixed subjects rows
+  // 3. Fetch Students + Timetable subjects rows
   useEffect(() => {
     if (!cls) return;
     const fetchStudents = async () => {
@@ -250,7 +243,7 @@ export default function MobileFinalResult() {
     setRows(rows.map(r => ({ ...r, total: val })));
   };
 
-  // ✅ Edit: student ki asli ID + fixed subjects ke saath saved marks merge
+  // ✅ Edit: student ki asli ID + timetable subjects ke saath saved marks merge
   const handleEdit = (item) => {
     const stu = allStudents.find(s => String(s.id) === String(item.studentId));
     setEditingId(item.id);
@@ -268,7 +261,7 @@ export default function MobileFinalResult() {
         marks: f ? String(f.marks) : ""
       };
     });
-    // Jo saved subjects list me match nahi hue unhe bhi rakho
+    // Timetable me na hone wale saved subjects bhi rakho (marks na jayein)
     saved.forEach(r => {
       if (!merged.some(m => sameSub(m.subject, r.subject))) {
         merged.push({ subject: r.subject, total: r.total, marks: String(r.marks) });
@@ -285,7 +278,7 @@ export default function MobileFinalResult() {
   // 5. SAVE RESULT (Desktop jaisa logic)
   const saveResult = async () => {
     if (!selectedStudent) return toast.error("Student select karein!");
-    if (!rows.length) return toast.error("Is class/exam ka subject nahi mila!");
+    if (!rows.length) return toast.error("Timetable me is class/exam ka subject nahi mila!");
 
     const studentId = String(selectedStudent.id);
     const isAlreadyDone = resultList.some(res => String(res.studentId) === studentId && !res.delete_at);
@@ -496,7 +489,7 @@ export default function MobileFinalResult() {
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Subject-wise Score</p>
                 {rows.length === 0 && (
                   <div className="p-6 text-center text-red-400 text-[10px] font-black bg-white rounded-3xl border border-dashed">
-                    IS CLASS/EXAM KA SUBJECT NAHI MILA.
+                    IS CLASS/EXAM KA SUBJECT TIMETABLE ME NAHI MILA.
                   </div>
                 )}
                 {rows.map((r, i) => (
