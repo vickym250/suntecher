@@ -26,19 +26,33 @@ const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 const SUBJECT_ORDER = [
   ["english", "eng"],
   ["hindi"],
-  ["math", "maths", "mathematics"],
-  ["science", "sci"],
-  ["sst", "socialscience", "socialstudies", "sosc", "socialsci"],
-  ["computer", "computers", "computerscience"],
-  ["urdu", "sanskrit", "sanskriturdu", "urdusanskrit"],   // 👈 same slot ("Sanskrit/Urdu" ek hi naam ho tab bhi)
-  ["gk", "generalknowledge"],
-  ["art", "arts", "drawing"]
+  ["math", "maths", "mathematics", "mathematic"],
+  ["science", "sci", "generalscience", "gsci"],
+  ["sst", "ssc", "ss", "socialscience", "socialstudies", "sosc", "socialsci", "sscience", "sstudies"],
+  ["computer", "computers", "computerscience", "comp"],
+  ["urdu", "sanskrit", "sanskriturdu", "urdusanskrit"],   // 👈 same slot
+  ["gk", "generalknowledge", "genknowledge", "gknowledge"],
+  ["art", "arts", "drawing", "artcraft", "artandcraft"]
 ];
 
 const subjectRank = (name) => {
   const n = normalize(name);
-  const idx = SUBJECT_ORDER.findIndex((aliases) => aliases.includes(n));
-  return idx === -1 ? 999 : idx; // list me nahi hai to sabse neeche
+  // 1) exact match
+  const exact = SUBJECT_ORDER.findIndex((aliases) => aliases.includes(n));
+  if (exact !== -1) return exact;
+  // 2) fallback: naam ke andar alias mile (e.g. "englishgrammar", "hindivyakaran")
+  //    sabse lamba alias jeetta hai (taaki "socialsciences" Science me na chala jaye)
+  let bestIdx = -1;
+  let bestLen = 0;
+  SUBJECT_ORDER.forEach((aliases, i) => {
+    aliases.forEach((a) => {
+      if (a.length >= 4 && n.includes(a) && a.length > bestLen) {
+        bestLen = a.length;
+        bestIdx = i;
+      }
+    });
+  });
+  return bestIdx === -1 ? 999 : bestIdx; // list me nahi hai to sabse neeche
 };
 
 // Same slot ke andar order (Urdu, Sanskrit)
