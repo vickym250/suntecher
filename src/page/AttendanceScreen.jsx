@@ -69,9 +69,10 @@ export default function AttendanceWeb() {
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter(s => !s.deletedAt && s.session === currentAppSession);
 
-      const sortedList = list.sort((a, b) => {
-        return Number(a.rollNumber) - Number(b.rollNumber);
-      });
+      // Name ke hisaab se A se Z
+      const sortedList = list.sort((a, b) =>
+        String(a.name || "").trim().localeCompare(String(b.name || "").trim(), undefined, { sensitivity: "base" })
+      );
 
       setStudents(sortedList);
       setLoading(false);
@@ -348,8 +349,20 @@ export default function AttendanceWeb() {
                   return (
                     <tr key={item.id} className={`hover:bg-slate-50/50 transition-colors ${isMarked ? 'opacity-40' : ''}`}>
                       <td className="p-6">
-                        <div className="font-black text-indigo-600 italic text-sm">#{item.rollNumber}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-indigo-600 italic text-sm">#{item.rollNumber}</span>
+                          {item.examRollNo && (
+                            <span className="text-[10px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded-lg uppercase">
+                              Exam Roll: {item.examRollNo}
+                            </span>
+                          )}
+                        </div>
                         <div className="font-bold uppercase text-slate-800">{item.name}</div>
+                        {(item.fatherName || item.father) && (
+                          <div className="text-[11px] font-bold text-slate-400 uppercase">
+                            Father: {item.fatherName || item.father}
+                          </div>
+                        )}
                         {isMarked && <span className="text-[9px] font-black text-green-500 uppercase tracking-tighter italic">✓ Already Saved</span>}
                       </td>
                       <td className="p-6">
