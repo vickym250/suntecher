@@ -23,13 +23,8 @@ const FIXED_CLASSES = [
 // =========================================================
 const JUNIOR_CLASSES = ["Nursery", "LKG", "UKG"];
 
-// Nursery, LKG, UKG
-const JUNIOR_SUBJECTS = [
-  "Hindi", "Hindi-Oral",
-  "English", "English-Oral",
-  "Math", "Math-Oral",
-  "Art"
-];
+// Nursery, LKG, UKG  ✅ sirf Hindi, English, Math, Art
+const JUNIOR_SUBJECTS = ["Hindi", "English", "Math", "Art"];
 
 // Class 1 se Class 8
 const SENIOR_SUBJECTS = [
@@ -44,7 +39,7 @@ const getSubjectsFor = (className) =>
 const normalize = (s = "") => String(s).toLowerCase().replace(/[^a-z]/g, "");
 
 // Purane saved results ke alag spelling (Mathematics, G.S., Sanskrit/Urdu...) ko
-// naye static naam se match karne ke liye. Sirf EXACT match (isliye Hindi aur Hindi-Oral alag rehte hain)
+// naye static naam se match karne ke liye. Sirf EXACT match
 const ALIAS_SLOTS = [
   ["english", "eng"],
   ["hindi"],
@@ -161,6 +156,10 @@ export default function MobileFinalResult() {
   const handleMasterMaxChange = (val) => {
     setMasterMax(val);
     setRows(rows.map(r => ({ ...r, total: val })));
+  };
+
+  const updateMarks = (index, val) => {
+    setRows(rows.map((r, i) => (i === index ? { ...r, marks: val } : r)));
   };
 
   // ✅ Edit: student ki asli ID + static subjects ke saath saved marks merge
@@ -417,13 +416,14 @@ export default function MobileFinalResult() {
                       <span className="text-[8px] font-bold text-slate-300 uppercase italic">Out of {r.total}</span>
                     </div>
                     <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 focus-within:bg-white focus-within:border-indigo-400 transition-all">
-                        <input
-                          type="number"
-                          value={r.marks}
-                          onChange={(e) => setRows(rows.map((row, idx) => idx === i ? { ...row, marks: e.target.value } : row))}
-                          className="w-10 text-center font-black text-indigo-600 bg-transparent outline-none text-sm"
-                          placeholder="--"
-                        />
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={r.marks}
+                        onChange={(e) => updateMarks(i, e.target.value)}
+                        className="w-14 bg-transparent text-center font-black text-sm text-slate-800 outline-none"
+                      />
                     </div>
                   </div>
                 ))}
@@ -431,9 +431,13 @@ export default function MobileFinalResult() {
             </div>
 
             {/* SAVE BUTTON */}
-            <div className="absolute bottom-0 left-0 right-0 p-6 bg-white border-t">
-              <button onClick={saveResult} disabled={loading || !selectedStudent} className="w-full bg-indigo-600 text-white py-5 rounded-[2rem] font-black uppercase text-sm shadow-xl active:scale-95 disabled:bg-slate-200 flex items-center justify-center gap-3 transition-all">
-                {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <><Save size={20}/> Publish Result</>}
+            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#F8FAFC] via-[#F8FAFC] to-transparent">
+              <button
+                onClick={saveResult}
+                disabled={loading}
+                className="w-full bg-indigo-600 text-white py-5 rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-60"
+              >
+                <Save size={18} /> {loading ? "Saving..." : editingId ? "Update Result" : "Publish Result"}
               </button>
             </div>
           </div>
