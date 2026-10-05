@@ -23,8 +23,8 @@ const FIXED_CLASSES = [
 // =========================================================
 const JUNIOR_CLASSES = ["Nursery", "LKG", "UKG"];
 
-// Nursery, LKG, UKG  ✅ sirf Hindi, English, Math, Art
-const JUNIOR_SUBJECTS = ["Hindi", "English", "Math", "Art"];
+// Nursery, LKG, UKG  ✅ Hindi, English, Math, Rhymes, Art
+const JUNIOR_SUBJECTS = ["Hindi", "English", "Math", "Rhymes", "Art"];
 
 // Class 1 se Class 8
 const SENIOR_SUBJECTS = [
@@ -50,6 +50,7 @@ const ALIAS_SLOTS = [
   ["urdu", "sanskrit", "sanskriturdu", "urdusanskrit"],
   ["gk", "generalknowledge", "genknowledge", "gknowledge"],
   ["art", "arts", "drawing", "artcraft", "artandcraft"],
+  ["rhymes", "rhyme"],
   ["hindioral", "oralhindi"],
   ["englishoral", "oralenglish"],
   ["mathoral", "mathsoral", "mathematicsoral", "oralmath", "oralmaths"]
@@ -63,6 +64,10 @@ const sameSub = (a, b) => {
   const sa = slotOf(a);
   return sa !== -1 && sa === slotOf(b);
 };
+
+// Art me marks nahi, sirf grade (A/B/C) - total me nahi judta
+const GRADES = ["A", "B", "C"];
+const isArt = (name) => sameSub(name, "Art");
 
 // 👇 LocalStorage helpers: session / class / exam yaad rakhne ke liye
 const LS_PREFIX = "mobileFinalResult_";
@@ -135,7 +140,11 @@ export default function MobileFinalResult() {
     fetchStudents();
 
     if (!editingId) {
-      setRows(getSubjectsFor(cls).map(sub => ({ subject: sub, total: masterMax, marks: "" })));
+      setRows(getSubjectsFor(cls).map(sub =>
+        isArt(sub)
+          ? { subject: sub, total: 0, marks: "", grade: "" }
+          : { subject: sub, total: masterMax, marks: "" }
+      ));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cls, exam, editingId, session]);
@@ -146,7 +155,7 @@ export default function MobileFinalResult() {
     const min = parseInt(minRand);
     const max = parseInt(maxRand);
     if (isNaN(min) || isNaN(max) || min > max) return toast.error("Check Min/Max Range!");
-    setRows(rows.map(r => ({
+    setRows(rows.map(r => isArt(r.subject) ? r : ({
       ...r,
       marks: (Math.floor(Math.random() * (max - min + 1)) + min).toString()
     })));
@@ -155,11 +164,15 @@ export default function MobileFinalResult() {
 
   const handleMasterMaxChange = (val) => {
     setMasterMax(val);
-    setRows(rows.map(r => ({ ...r, total: val })));
+    setRows(rows.map(r => isArt(r.subject) ? r : ({ ...r, total: val })));
   };
 
   const updateMarks = (index, val) => {
     setRows(rows.map((r, i) => (i === index ? { ...r, marks: val } : r)));
+  };
+
+  const updateGrade = (index, val) => {
+    setRows(rows.map((r, i) => (i === index ? { ...r, grade: val } : r)));
   };
 
   // ✅ Edit: student ki asli ID + static subjects ke saath saved marks merge
@@ -174,6 +187,7 @@ export default function MobileFinalResult() {
 
     const merged = fixed.map(sub => {
       const f = saved.find(r => sameSub(r.subject, sub));
+      if (isArt(sub)) return { subject: sub, total: 0, marks: "", grade: (f && f.grade) || "" };
       return {
         subject: sub,
         total: f ? f.total : masterMax,
@@ -211,11 +225,13 @@ export default function MobileFinalResult() {
       // ✅ Saare subjects save (marks khali = 0), desktop jaisa
       const cleanRows = rows
         .filter(r => r.subject && r.subject.trim() !== "")
-        .map(r => ({
-          subject: r.subject.trim(),
-          total: Number(r.total) || 0,
-          marks: Number(r.marks) || 0
-        }));
+        .map(r => isArt(r.subject)
+          ? { subject: r.subject.trim(), total: 0, marks: 0, grade: r.grade || "" }
+          : {
+              subject: r.subject.trim(),
+              total: Number(r.total) || 0,
+              marks: Number(r.marks) || 0
+            });
 
       await runTransaction(db, async (transaction) => {
         let finalSrNo;
@@ -413,17 +429,30 @@ export default function MobileFinalResult() {
                     <div className="h-8 w-8 rounded-xl bg-slate-50 flex items-center justify-center font-black text-slate-300 text-[10px]">{i + 1}</div>
                     <div className="flex-1">
                       <span className="font-black text-slate-700 uppercase text-[11px] block italic leading-tight">{r.subject}</span>
-                      <span className="text-[8px] font-bold text-slate-300 uppercase italic">Out of {r.total}</span>
+                      {!isArt(r.subject) && (
+                        <span className="text-[8px] font-bold text-slate-300 uppercase italic">Out of {r.total}</span>
+                      )}
                     </div>
                     <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 focus-within:bg-white focus-within:border-indigo-400 transition-all">
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        placeholder="0"
-                        value={r.marks}
-                        onChange={(e) => updateMarks(i, e.target.value)}
-                        className="w-14 bg-transparent text-center font-black text-sm text-slate-800 outline-none"
-                      />
+                      {isArt(r.subject) ? (
+                        <select
+                          value={r.grade || ""}
+                          onChange={(e) => updateGrade(i, e.target.value)}
+                          className="w-14 bg-transparent text-center font-black text-sm text-slate-800 outline-none"
+                        >
+                          <option value="">-</option>
+                          {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={r.marks}
+                          onChange={(e) => updateMarks(i, e.target.value)}
+                          className="w-14 bg-transparent text-center font-black text-sm text-slate-800 outline-none"
+                        />
+                      )}
                     </div>
                   </div>
                 ))}
